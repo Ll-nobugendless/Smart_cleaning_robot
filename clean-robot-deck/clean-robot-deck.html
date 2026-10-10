@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="tokyo-night">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-content-type" content="presentation" />
+<meta name="x-presentation-version" content="1.0" />
+<meta name="x-presentation-indicator" content="deck-stage .slide" />
+<title>清洁小车代码架构</title>
+<link rel="stylesheet" href="./_shared/fonts.css">
+<link rel="stylesheet" href="./_shared/base.css">
+<link id="theme-link" rel="stylesheet" href="./_shared/themes/tokyo-night.css">
+<link rel="stylesheet" href="./_shared/animations/animations.css">
+<link rel="stylesheet" href="./_shared/decorations.css">
+<style>
+/* --- Cover --- */
+.cover-bg{position:absolute;inset:0;overflow:hidden}
+.cover-bg .placeholder{width:100%;height:100%;background:
+  radial-gradient(80% 60% at 30% 40%,rgba(122,162,247,.25),transparent 70%),
+  radial-gradient(70% 50% at 75% 60%,rgba(187,154,247,.2),transparent 70%),
+  linear-gradient(135deg,#1a1b26,#16161e)}
+.cover-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.45) 100%)}
+.cover-content{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;justify-content:center;padding:56px 72px}
+.cover-content .h1{color:#c0caf5;font-size:68px;font-weight:900;line-height:1.08;letter-spacing:-.03em;margin:0}
+.cover-content .lede{color:rgba(192,202,245,.75);font-size:20px;margin:18px 0 0;max-width:56ch}
+.cover-content .deck-header,.cover-content .deck-footer{color:rgba(192,202,245,.55)}
+
+/* --- Arch diagram --- */
+.arch{margin-top:20px;display:grid;grid-template-rows:auto auto auto;gap:18px}
+.arch .tier{display:grid;grid-template-columns:130px 1fr;align-items:stretch;gap:18px}
+.arch .tname{display:flex;align-items:center;justify-content:center;background:var(--surface-2);border-radius:var(--radius);padding:18px;font-weight:600;font-size:13px;color:var(--text-2);text-transform:uppercase;letter-spacing:.08em;text-align:center}
+.arch .cells{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.arch .cell{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center;box-shadow:var(--shadow)}
+.arch .cell .ic{font-size:22px}
+.arch .cell h4{font-size:13px;margin:6px 0 2px}
+.arch .cell p{font-size:11px;color:var(--text-3);margin:0;line-height:1.5}
+.arch .tier.hl .cell{border-top:3px solid var(--accent)}
+
+/* --- Process steps --- */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;margin-top:24px}
+.step{position:relative;padding:22px 24px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow)}
+.step .num{position:absolute;top:-20px;left:20px;width:42px;height:42px;border-radius:50%;background:var(--accent);color:#1a1b26;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;box-shadow:var(--shadow)}
+.step h4{margin:16px 0 6px;font-size:15px}
+.step p{font-size:12px;color:var(--text-2);line-height:1.6}
+.step .tag{display:inline-block;margin-top:8px;font-size:10px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-3)}
+
+/* --- Flow diagram --- */
+.flow{display:flex;align-items:center;gap:10px;margin-top:30px;max-width:1500px;flex-wrap:wrap}
+.flow .node{flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 12px;text-align:center;box-shadow:var(--shadow);position:relative}
+.flow .node .ic{font-size:28px;margin-bottom:4px}
+.flow .node h4{font-size:13px}
+.flow .node p{font-size:11px;color:var(--text-3);margin:4px 0 0;line-height:1.4}
+.flow .arr{color:var(--text-3);font-size:24px;flex-shrink:0}
+.flow .node.hl{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent),var(--shadow)}
+
+/* --- Table --- */
+.t{width:100%;border-collapse:collapse;font-size:14px}
+.t th,.t td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+.t th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-3);font-weight:600}
+.t tr:hover td{background:var(--surface-2)}
+.t td.mono{font-family:var(--font-mono,monospace);font-size:13px}
+.t .grp{color:var(--accent);font-weight:600}
+
+/* --- Three column --- */
+.col3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-top:24px}
+.col3 .card{padding:20px}
+.col3 .card h4{font-size:15px;margin:0 0 8px}
+.col3 .card .ic{font-size:28px;margin-bottom:6px}
+.col3 .card ul{font-size:12px;color:var(--text-2);line-height:1.8;padding-left:16px;margin:8px 0 0}
+.col3 .card .pin{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--accent-3);margin-top:6px;font-family:monospace}
+
+/* misc */
+.code-block{font-family:monospace;font-size:12px;background:var(--bg-soft);padding:14px;border-radius:var(--radius-sm);overflow:auto;color:var(--text-2);line-height:1.7}
+.code-block .kw{color:var(--accent-2)}
+.code-block .fn{color:var(--accent-3)}
+.code-block .cm{color:var(--text-3)}
+.code-block .num{color:var(--warn)}
+</style>
+</head>
+<body data-themes="tokyo-night" data-theme-base="./_shared/themes/">
+<deck-stage width="1920" height="1080">
+
+<!-- ============ 1. Cover ============ -->
+<section class="slide active deco-soft-gradient" data-deck-label="封面" style="padding:0">
+  <div class="cover-bg"><div class="placeholder"></div></div>
+  <div class="cover-scrim"></div>
+  <div class="cover-content">
+    <div class="deck-header"><span class="eyebrow">STM32F407VET6 · 嵌入式项目</span><span class="eyebrow">2026</span></div>
+    <div class="anim-stagger-list" style="margin-top:auto;margin-bottom:auto">
+      <h1 class="h1 anim-fade-up" data-anim="fade-up">
+        清洁小车<br><span class="gradient-text">代码架构解析</span>
+      </h1>
+      <p class="lede">基于 STM32F407 的自主清扫机器人，PID 闭环驱动 · 弓形路径规划 · 多传感器融合避障</p>
+    </div>
+    <div class="deck-footer"><span class="dim2" style="color:rgba(192,202,245,.5)">Clear_Robot / main</span><span class="slide-number" data-current="1" data-total="12"></span></div>
+  </div>
+  <div class="notes">封面页：介绍清洁小车项目，基于STM32F407VET6芯片，168MHz主频，包含PID闭环运动控制、弓形路径自动清扫、多传感器避障等核心功能。</div>
+</section>
+
+<!-- ============ 2. TOC ============ -->
+<section class="slide deco-grid" data-deck-label="目录">
+  <p class="eyebrow">Contents · 目录</p>
+  <h2 class="h2">五个核心主题</h2>
+  <div class="grid g2 mt-l anim-stagger-list" data-anim-target>
+    <div class="card"><div class="row"><div class="h3 dim2" style="width:48px">01</div><div><h4>系统总览</h4><p class="dim">项目架构 · 模块划分 · 主函数流程</p></div></div></div>
+    <div class="card"><div class="row"><div class="h3 dim2" style="width:48px">02</div><div><h4>运动控制</h4><p class="dim">PID 闭环 · 电机 PWM · 编码器反馈</p></div></div></div>
+    <div class="card"><div class="row"><div class="h3 dim2" style="width:48px">03</div><div><h4>自动清扫模式</h4><p class="dim">弓形路径规划 · 碰障回弹 · U-turn 换向</p></div></div></div>
+    <div class="card"><div class="row"><div class="h3 dim2" style="width:48px">04</div><div><h4>传感器与外设</h4><p class="dim">超声波/红外避障 · 蓝牙通信 · 温湿度 · OLED</p></div></div></div>
+    <div class="card" style="grid-column:span 2"><div class="row"><div class="h3 dim2" style="width:48px">05</div><div><h4>引脚分配总表</h4><p class="dim">STM32F407 全部外设引脚映射一览</p></div></div></div>
+  </div>
+  <div class="deck-footer"><span class="dim2">目录</span><span>1/12</span></div>
+  <div class="notes">目录页：本次讲解分为五个主题——系统总览介绍整体架构，运动控制讲解PID闭环驱动，自动清扫讲解弓形路径规划，传感器与外设讲解各模块，最后汇总引脚分配。</div>
+</section>
+
+<!-- ============ 3. Section: 系统总览 ============ -->
+<section class="slide deco-ambient-purple center tc" data-deck-label="第一章">
+  <div style="max-width:780px;margin:0 auto">
+    <p class="kicker anim-fade-down" data-anim="fade-down">Section · 01</p>
+    <h1 class="h1 anim-rise-in" data-anim="rise-in" style="font-size:96px">系统<span class="gradient-text">总览</span></h1>
+    <div class="divider-accent" style="margin:24px auto"></div>
+    <p class="lede" style="margin:0 auto">12 个源文件，3 层架构，从硬件初始化到自主清扫的全链路。</p>
+  </div>
+  <div class="notes">第一章：系统总览。项目包含12个核心源文件，按三层架构组织。</div>
+</section>
+
+<!-- ============ 4. Architecture ============ -->
+<section class="slide deco-grid" data-deck-label="整体架构">
+  <p class="kicker">Architecture · 三层架构</p>
+  <h2 class="h2">模块化分层设计</h2>
+  <div class="arch anim-stagger-list" data-anim-target>
+    <div class="tier">
+      <div class="tname">应用层</div>
+      <div class="cells">
+        <div class="cell"><div class="ic">🎮</div><h4>auto_mode.c</h4><p>弓形路径自动清扫</p></div>
+        <div class="cell"><div class="ic">📡</div><h4>manual_mode.c</h4><p>蓝牙手动操控</p></div>
+        <div class="cell"><div class="ic">🧹</div><h4>cleaner.c</h4><p>边刷+吸尘器联动</p></div>
+      </div>
+    </div>
+    <div class="tier hl">
+      <div class="tname">控制层</div>
+      <div class="cells">
+        <div class="cell"><div class="ic">⚙️</div><h4>drive.c</h4><p>PID闭环 · TIM1 10ms中断</p></div>
+        <div class="cell"><div class="ic">🔌</div><h4>ax_motor.c</h4><p>PWM驱动 · TIM4/TIM5</p></div>
+        <div class="cell"><div class="ic">📏</div><h4>ax_encoder.c</h4><p>编码器测速 · TIM2/TIM3</p></div>
+      </div>
+    </div>
+    <div class="tier">
+      <div class="tname">感知层</div>
+      <div class="cells">
+        <div class="cell"><div class="ic">📡</div><h4>obstacle.c</h4><p>超声波+红外避障</p></div>
+        <div class="cell"><div class="ic">🌡️</div><h4>dht11.c</h4><p>温湿度采集</p></div>
+        <div class="cell"><div class="ic">📱</div><h4>bluetooth.c</h4><p>USART3 蓝牙指令</p></div>
+        <div class="cell"><div class="ic">🖥️</div><h4>oled.c</h4><p>OLED 状态显示</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="deck-footer"><span class="dim2">整体架构</span><span>4/12</span></div>
+  <div class="notes">整体架构分三层：应用层负责模式调度（自动/手动/清洁器），控制层是核心（PID闭环驱动+电机PWM+编码器反馈），感知层包含所有传感器和外设接口。main.c作为入口统一初始化所有模块。</div>
+</section>
+
+<!-- ============ 5. Main function & init ============ -->
+<section class="slide" data-deck-label="主函数与初始化">
+  <p class="kicker">Entry Point · 主函数</p>
+  <h2 class="h2">main.c — 初始化与主循环</h2>
+  <div class="steps anim-stagger-list" data-anim-target style="margin-top:28px">
+    <div class="step"><div class="num">1</div><h4>通信初始化</h4><p>USART1 调试串口 (115200)<br>USART3 蓝牙模块 (115200)</p><span class="tag">usart1.c · bluetooth.c</span></div>
+    <div class="step"><div class="num">2</div><h4>传感器初始化</h4><p>红外避障 PC0/PC1/PC2<br>超声波 PB0~PB13<br>DHT11 温湿度 PB8</p><span class="tag">obstacle.c · dht11.c</span></div>
+    <div class="step"><div class="num">3</div><h4>执行器初始化</h4><p>边刷电机 PD0~PD3<br>吸尘器 PD4/PD5<br>OLED 显示屏 PB6/PB7</p><span class="tag">cleaner.c · oled.c</span></div>
+    <div class="step"><div class="num">4</div><h4>运动控制初始化</h4><p>编码器 TIM2/TIM3<br>电机 PWM TIM4/TIM5<br>PID 闭环 TIM1 中断</p><span class="tag">encoder · motor · drive</span></div>
+  </div>
+  <div class="card mt-l" style="padding:16px 20px">
+    <p class="dim" style="margin:0;font-size:13px"><b>主循环：</b><code>while(1)</code> 中检测蓝牙指令 <code>temp3</code>：收到 <code>'1'</code> 进入自动清扫模式，收到 <code>'2'</code> 进入手动操控模式。<span class="dim2">— 模式切换由蓝牙中断异步驱动。</span></p>
+  </div>
+  <div class="deck-footer"><span class="dim2">主函数</span><span>5/12</span></div>
+  <div class="notes">main.c非常精简：先完成4步初始化（通信、传感器、执行器、运动控制），然后进入while循环。循环中检测蓝牙指令temp3，'1'进自动模式，'2'进手动模式。蓝牙指令通过USART3中断异步更新temp3变量。</div>
+</section>
+
+<!-- ============ 6. Section: 运动控制 ============ -->
+<section class="slide deco-ambient-purple center tc" data-deck-label="第二章">
+  <div style="max-width:780px;margin:0 auto">
+    <p class="kicker anim-fade-down" data-anim="fade-down">Section · 02</p>
+    <h1 class="h1 anim-rise-in" data-anim="rise-in" style="font-size:96px">运动<span class="gradient-text">控制</span></h1>
+    <div class="divider-accent" style="margin:24px auto"></div>
+    <p class="lede" style="margin:0 auto">PID 闭环直行 · 开环转向 · 编码器反馈保证两轮等速。</p>
+  </div>
+  <div class="notes">第二章：运动控制。核心是drive.c中的PID闭环系统。</div>
+</section>
+
+<!-- ============ 7. PID Closed-loop ============ -->
+<section class="slide" data-deck-label="PID闭环驱动">
+  <p class="kicker">Drive System · 驱动系统</p>
+  <h2 class="h2">PID 闭环驱动 <span class="dim2">— drive.c</span></h2>
+  <div class="grid g2 mt-l">
+    <div class="card anim-fade-left" data-anim="fade-left">
+      <h3>核心机制</h3>
+      <ul style="font-size:13px;color:var(--text-2);line-height:2;padding-left:18px;margin:0">
+        <li><b>TIM1 中断</b>：每 10ms 执行一次 PID 计算</li>
+        <li><b>差速 PID</b>：diff = 左编码器增量 - 右编码器增量</li>
+        <li><b>直行</b>：右轮 = 基准PWM + PID修正，左轮 = 右轮 - 75</li>
+        <li><b>转向</b>：固定 30% PWM 开环（不做 PID）</li>
+        <li><b>停止</b>：PWM 立即置 0，清除积分/误差</li>
+      </ul>
+      <div class="row mt-m" style="gap:8px;flex-wrap:wrap">
+        <span class="tag" style="font-size:10px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-3)">Kp=10</span>
+        <span class="tag" style="font-size:10px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-3)">Ki=2</span>
+        <span class="tag" style="font-size:10px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-3)">Kd=5</span>
+        <span class="tag" style="font-size:10px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-3)">PWM=600 (30%)</span>
+        <span class="tag" style="font-size:10px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-3)">自动模式+40</span>
+      </div>
+    </div>
+    <div class="card anim-fade-right" data-anim="fade-right">
+      <h3>中断伪代码</h3>
+<div class="code-block"><span class="cm">// TIM1_IRQHandler · 每10ms</span>
+<span class="kw">delta_l</span> = <span class="fn">Encoder_L</span>() - last_l;
+<span class="kw">delta_r</span> = <span class="fn">Encoder_R</span>() - last_r;
+<span class="kw">diff</span> = delta_l - delta_r;  <span class="cm">// >0 = 左轮快</span>
+
+<span class="kw">corr</span> = Kp*diff + Ki*integral
+       + Kd*(diff-last_diff);
+<span class="fn">clamp</span>(corr, ±<span class="num">150</span>);
+
+<span class="cm">// 右轮=基准+修正，左轮=右轮-75</span>
+pwm_r = <span class="num">600</span> + corr;
+pwm_l = pwm_r - <span class="num">75</span>;
+
+<span class="fn">Motor_SetSpeed</span>(pwm_l, pwm_r);</div>
+      <p class="dim mt-s" style="font-size:11px;margin:8px 0 0">左轮恒比右轮少 75 PWM，补偿电机特性差异；自动模式下基准 PWM 从 600 提升至 640。</p>
+    </div>
+  </div>
+  <div class="deck-footer"><span class="dim2">PID闭环</span><span>7/12</span></div>
+  <div class="notes">drive.c是运动控制核心。TIM1每10ms触发中断，读取编码器增量计算左右轮速度差，PID修正后更新PWM。直行时左轮恒等于右轮减75（补偿电机差异），自动模式额外+40 PWM。转向时切换为开环固定PWM。PID参数：Kp=10, Ki=2, Kd=5，修正量限制±150。</div>
+</section>
+
+<!-- ============ 8. Section: 自动清扫 ============ -->
+<section class="slide deco-ambient-purple center tc" data-deck-label="第三章">
+  <div style="max-width:780px;margin:0 auto">
+    <p class="kicker anim-fade-down" data-anim="fade-down">Section · 03</p>
+    <h1 class="h1 anim-rise-in" data-anim="rise-in" style="font-size:96px">自动<span class="gradient-text">清扫</span></h1>
+    <div class="divider-accent" style="margin:24px auto"></div>
+    <p class="lede" style="margin:0 auto">弓形路径规划 · 碰障回弹 · 多传感器融合避障决策。</p>
+  </div>
+  <div class="notes">第三章：自动清扫模式。弓形路径规划是核心算法。</div>
+</section>
+
+<!-- ============ 9. Bow-shaped path ============ -->
+<section class="slide" data-deck-label="弓形路径规划">
+  <p class="kicker">Auto Mode · 自动模式</p>
+  <h2 class="h2">弓形路径规划 <span class="dim2">— auto_mode.c</span></h2>
+  <div class="flow anim-stagger-list" data-anim-target style="margin-top:30px">
+    <div class="node hl"><div class="ic">🚗</div><h4>直行</h4><p>持续直行<br>实时检测前方障碍</p></div>
+    <div class="arr">→</div>
+    <div class="node"><div class="ic">💥</div><h4>碰障</h4><p>前方检测到障碍<br>触发回弹判定</p></div>
+    <div class="arr">→</div>
+    <div class="node"><div class="ic">⏪</div><h4>后退</h4><p>后退 300ms<br>拉开距离重判</p></div>
+    <div class="arr">→</div>
+    <div class="node"><div class="ic">🔍</div><h4>判定</h4><p>左右障碍融合<br>决定换向方向</p></div>
+    <div class="arr">→</div>
+    <div class="node hl"><div class="ic">🔄</div><h4>U-turn</h4><p>90°转向→直行1s<br>→90°转向</p></div>
+    <div class="arr">→</div>
+    <div class="node"><div class="ic">↩️</div><h4>循环</h4><p>交替左右U-turn<br>形成弓字清扫</p></div>
+  </div>
+  <div class="grid g3 mt-l" style="gap:14px">
+    <div class="card" style="padding:14px"><p class="dim" style="font-size:12px;margin:0"><b>无障碍</b>：右/左U-turn交替之字循环，直到某侧出现障碍</p></div>
+    <div class="card" style="padding:14px"><p class="dim" style="font-size:12px;margin:0"><b>单侧障碍</b>：向反方向U-turn远离，再进入镜像之字循环</p></div>
+    <div class="card" style="padding:14px"><p class="dim" style="font-size:12px;margin:0"><b>双侧障碍</b>：后退+右转脱困，回主流程重新判定</p></div>
+  </div>
+  <div class="deck-footer"><span class="dim2">弓形路径</span><span>9/12</span></div>
+  <div class="notes">auto_mode.c实现弓形路径规划：直行碰障→后退300ms拉开距离→重新判定左右障碍→根据障碍情况选择U-turn方向→交替左右U-turn形成弓字清扫。U-turn=两次90°转向中间夹1秒直行。关键参数：TURN_90_MS=600ms, BACK_MS=300ms, STRAIGHT_MS=1000ms。碰障后先后退再判定，避免正前方墙体被误判为双侧障碍。</div>
+</section>
+
+<!-- ============ 10. Sensors & Peripherals ============ -->
+<section class="slide" data-deck-label="传感器与外设">
+  <p class="kicker">Peripherals · 传感器与外设</p>
+  <h2 class="h2">多传感器融合避障 + 外设接口</h2>
+  <div class="col3 anim-stagger-list" data-anim-target>
+    <div class="card">
+      <div class="ic">📡</div>
+      <h4>超声波 + 红外避障</h4>
+      <p class="dim" style="font-size:12px;margin:0">obstacle.c</p>
+      <ul>
+        <li>左/右超声波测距 (HC-SR04)</li>
+        <li>左/右/中红外检测</li>
+        <li>安全距离 15cm</li>
+        <li>无回波返回 999</li>
+        <li>TIM6 微秒计时器</li>
+      </ul>
+      <span class="pin">PB0/PB1/PB12/PB13</span>
+      <span class="pin" style="margin-left:4px">PC0/PC1/PC2</span>
+    </div>
+    <div class="card">
+      <div class="ic">📱</div>
+      <h4>蓝牙通信</h4>
+      <p class="dim" style="font-size:12px;margin:0">bluetooth.c</p>
+      <ul>
+        <li>USART3 · 115200 波特率</li>
+        <li>中断接收，更新 temp3</li>
+        <li>'1' 自动 / '2' 手动</li>
+        <li>'3'~'6' 方向控制</li>
+        <li>'A/B' 边刷开关</li>
+        <li>'C' 温湿度 / '8' 退出</li>
+      </ul>
+      <span class="pin">PB10/PB11</span>
+    </div>
+    <div class="card">
+      <div class="ic">🌡️</div>
+      <h4>温湿度 + OLED</h4>
+      <p class="dim" style="font-size:12px;margin:0">dht11.c · oled.c</p>
+      <ul>
+        <li>DHT11 单总线协议</li>
+        <li>关中断保护时序</li>
+        <li>5字节校验</li>
+        <li>OLED 软件 I2C</li>
+        <li>方向箭头/状态图标</li>
+      </ul>
+      <span class="pin">PB8 (DHT11)</span>
+      <span class="pin" style="margin-left:4px">PB6/PB7 (OLED)</span>
+    </div>
+  </div>
+  <div class="deck-footer"><span class="dim2">传感器与外设</span><span>10/12</span></div>
+  <div class="notes">三个核心外设模块：1)避障模块融合超声波+红外传感器，超声波用TIM6做微秒计时，安全距离15cm；2)蓝牙通过USART3中断接收指令，temp3变量全局共享；3)DHT11单总线协议需要关中断保护微秒级时序，OLED用软件I2C显示方向箭头和状态。</div>
+</section>
+
+<!-- ============ 11. Pin Assignment Table ============ -->
+<section class="slide" data-deck-label="引脚分配总表">
+  <p class="kicker">Pin Map · 引脚分配</p>
+  <h2 class="h2">STM32F407VET6 外设引脚映射</h2>
+  <div class="card mt-l" style="padding:6px 12px">
+    <table class="t">
+      <thead><tr><th>模块</th><th>引脚</th><th>功能</th><th>定时器/总线</th></tr></thead>
+      <tbody>
+        <tr><td class="grp">右轮电机</td><td class="mono">PA2/PA3/PA4</td><td>方向/PWM/方向</td><td class="mono">TIM5_CH4</td></tr>
+        <tr><td class="grp">左轮电机</td><td class="mono">PD12/PD14/PD15</td><td>PWM/方向/方向</td><td class="mono">TIM4_CH1</td></tr>
+        <tr><td class="grp">右编码器</td><td class="mono">PA0/PA1</td><td>正交编码器 A/B</td><td class="mono">TIM2</td></tr>
+        <tr><td class="grp">左编码器</td><td class="mono">PA6/PA7</td><td>正交编码器 A/B</td><td class="mono">TIM3</td></tr>
+        <tr><td class="grp">超声波(左)</td><td class="mono">PB0/PB1</td><td>Trig推挽 / Echo下拉</td><td class="mono">TIM6 (1us)</td></tr>
+        <tr><td class="grp">超声波(右)</td><td class="mono">PB12/PB13</td><td>Trig推挽 / Echo下拉</td><td class="mono">TIM6 共享</td></tr>
+        <tr><td class="grp">红外避障</td><td class="mono">PC0/PC1/PC2</td><td>左/右/中 浮空输入</td><td class="mono">GPIO</td></tr>
+        <tr><td class="grp">蓝牙 USART3</td><td class="mono">PB10/PB11</td><td>TX / RX</td><td class="mono">USART3 · 115200</td></tr>
+        <tr><td class="grp">调试串口</td><td class="mono">PA9/PA10</td><td>TX / RX (printf)</td><td class="mono">USART1 · 115200</td></tr>
+        <tr><td class="grp">DHT11 温湿度</td><td class="mono">PB8</td><td>单总线 DATA</td><td class="mono">GPIO (带上拉)</td></tr>
+        <tr><td class="grp">OLED 显示</td><td class="mono">PB6/PB7</td><td>SCL / SDA</td><td class="mono">软件 I2C</td></tr>
+        <tr><td class="grp">边刷电机</td><td class="mono">PD0~PD3</td><td>H桥方向控制</td><td class="mono">GPIO 推挽</td></tr>
+        <tr><td class="grp">吸尘器</td><td class="mono">PD4/PD5</td><td>H桥方向控制</td><td class="mono">GPIO 推挽</td></tr>
+        <tr><td class="grp">PID 中断</td><td class="mono">—</td><td>10ms PID 计算中断</td><td class="mono">TIM1 · 100Hz</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="deck-footer"><span class="dim2">引脚分配</span><span>11/12</span></div>
+  <div class="notes">完整引脚映射表：右轮PA2/3/4(TIM5)，左轮PD12/14/15(TIM4)，编码器PA0/1(TIM2)和PA6/7(TIM3)，超声波PB0/1和PB12/13(TIM6)，红外PC0/1/2，蓝牙PB10/11(USART3)，调试PA9/10(USART1)，DHT11 PB8，OLED PB6/7，边刷PD0-3，吸尘器PD4/5，PID中断TIM1。</div>
+</section>
+
+<!-- ============ 12. Thanks ============ -->
+<section class="slide deco-soft-gradient center tc" data-deck-label="Thanks">
+  <div>
+    <div class="anim-confetti-burst" style="display:inline-block;padding:40px"></div>
+    <h1 class="h1 anim-fade-up" data-anim="fade-up" style="font-size:160px;line-height:1"><span class="gradient-text">谢谢</span></h1>
+    <p class="lede" style="margin:18px auto 0">一台会用弓字扫地的小车，背后是 12 个模块的精密协作。</p>
+    <div class="row mt-l" style="justify-content:center;gap:32px">
+      <div class="dim"><b>STM32F407VET6</b> · 168MHz</div>
+      <div class="dim">Clear_Robot / main</div>
+      <div class="dim">PID · 弓形路径 · 多传感器融合</div>
+    </div>
+  </div>
+  <div class="notes">感谢观看。这台清洁小车展示了嵌入式系统的典型架构：从硬件初始化到PID闭环控制，从多传感器融合避障到弓形路径规划，12个模块各司其职、协同工作。</div>
+</section>
+
+</deck-stage>
+<script src="./_shared/runtime.js"></script>
+<script src="./_shared/echarts-theme-sync.js"></script>
+<!-- <script src="./_shared/animations/fx-runtime.js"></script> -->
+</body></html>
